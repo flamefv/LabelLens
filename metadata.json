@@ -1,0 +1,6 @@
+{
+  "name": "LabelLens",
+  "description": "Evidence-Based Food Intelligence Platform. Understand food labels, investigate unfamiliar ingredients, and compare products using real product data, official FDA guidance, and traceable sources.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
