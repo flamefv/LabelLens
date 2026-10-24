@@ -350,23 +350,27 @@ export const AnalyzePage: React.FC<AnalyzePageProps> = ({ onProductReady }) => {
                   </p>
                 </div>
 
-                {/* Popular Barcode Shortcuts */}
+                {/* Popular Barcode & Variety Shortcuts */}
                 <div className="pt-2 border-t border-stone-100">
-                  <span className="text-xs text-stone-500 block mb-2 font-medium">Or tap common groceries to try:</span>
+                  <span className="text-xs text-stone-500 block mb-2 font-medium">Or tap common grocery staples to test immediately:</span>
                   <div className="flex flex-wrap gap-2 text-xs">
                     {[
-                      { name: 'Oreo Cookies', code: '044000032029' },
-                      { name: 'Nutella', code: '3017620422003' },
-                      { name: 'Heinz Ketchup', code: '013000006408' },
-                      { name: 'Cheerios', code: '016000275270' }
+                      { name: 'Honey Nut Cheerios', brand: 'General Mills', code: '016000275287' },
+                      { name: 'Cheerios Original', brand: 'General Mills', code: '016000275270' },
+                      { name: 'Organic Purely O’s', brand: 'Cascadian Farm', code: '021908500017' },
+                      { name: 'Oat Milk Barista', brand: 'Oatly', code: '7350052296188' },
+                      { name: 'Oreo Cookies', brand: 'Nabisco', code: '044000032029' },
+                      { name: 'Heinz Ketchup (No HFCS)', brand: 'Heinz', code: '013000007832' },
+                      { name: 'Beyond Burger', brand: 'Beyond Meat', code: '852629004576' }
                     ].map((item) => (
                       <button
                         key={item.code}
+                        type="button"
                         onClick={() => handleBarcodeSubmit(item.code)}
                         className="px-3 py-1.5 rounded-lg bg-stone-100 text-stone-800 hover:bg-emerald-50 hover:text-emerald-900 hover:border-emerald-300 border border-stone-200 transition-colors font-medium flex items-center gap-1.5"
                       >
                         <span>{item.name}</span>
-                        <span className="text-[10px] text-stone-400 font-mono">({item.code})</span>
+                        <span className="text-[10px] text-stone-400 font-mono">({item.brand})</span>
                       </button>
                     ))}
                   </div>

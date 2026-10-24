@@ -109,10 +109,10 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleStartCompare = (product: ProductRecord) => {
+  const handleStartCompare = (product: ProductRecord, compareWith?: ProductRecord) => {
     setCompareProductA(product);
-    // Pre-select second product as demo burger or next scenario
-    const secondProduct = SAMPLE_SCENARIOS.find((s) => s.id !== product.id) || SAMPLE_SCENARIOS[1];
+    // Pre-select second product as requested benchmark or next scenario
+    const secondProduct = compareWith || SAMPLE_SCENARIOS.find((s) => s.id !== product.id) || SAMPLE_SCENARIOS[1];
     setCompareProductB(secondProduct);
     navigateTo('compare');
   };

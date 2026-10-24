@@ -108,6 +108,63 @@ export const AboutPage: React.FC = () => {
           <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50 space-y-1">
             <div className="flex items-center justify-between">
               <span className="font-bold text-stone-900 text-xs sm:text-sm">
+                FDA Food Allergy Guidance (FALCPA & FASTER Act)
+              </span>
+              <a
+                href="https://www.fda.gov/food/food-labeling-nutrition/food-allergies"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-emerald-800 font-bold inline-flex items-center gap-1 hover:underline"
+              >
+                fda.gov/food-allergies <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <p className="text-stone-600 leading-relaxed text-xs">
+              Codified under FALCPA (21 U.S.C. § 343(w)) and the FASTER Act of 2021. Governs mandatory declaration of the Major 9 food allergens (Milk, Eggs, Peanuts, Tree Nuts, Wheat, Soybeans, Sesame, Fish, and Crustaceans). Enforces species-specific naming for tree nuts, fish, and crustaceans, and establishes FDA policy on voluntary precautionary advisory labeling.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-stone-900 text-xs sm:text-sm">
+                USDA FoodData Central (Agricultural Research Service)
+              </span>
+              <a
+                href="https://fdc.nal.usda.gov"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-emerald-800 font-bold inline-flex items-center gap-1 hover:underline"
+              >
+                fdc.nal.usda.gov <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <p className="text-stone-600 leading-relaxed text-xs">
+              The flagship food composition database from the U.S. Department of Agriculture. Foundation Foods and SR Legacy provide chemical laboratory analyses of commodities, allowing LabelLens to benchmark commercial packaged foods against analytical ground truth.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-stone-900 text-xs sm:text-sm">
+                U.S. Electronic Code of Federal Regulations (eCFR Title 21)
+              </span>
+              <a
+                href="https://www.ecfr.gov/current/title-21"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-emerald-800 font-bold inline-flex items-center gap-1 hover:underline"
+              >
+                Official Regulations <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <p className="text-stone-600 leading-relaxed text-xs">
+              Used for federal food safety approvals (GRAS 21 CFR Part 184), ingredient designation rules (21 CFR § 101.4), color additive certification (21 CFR Parts 73 & 74), and cGMP allergen cross-contact controls (21 CFR Part 117).
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-stone-900 text-xs sm:text-sm">
                 Open Food Facts (Public Collaborative Database)
               </span>
               <a
@@ -119,27 +176,8 @@ export const AboutPage: React.FC = () => {
                 openfoodfacts.org <ExternalLink className="w-3 h-3" />
               </a>
             </div>
-            <p className="text-stone-600 leading-relaxed">
+            <p className="text-stone-600 leading-relaxed text-xs">
               A free, open database of packaged foods worldwide contributed by consumers and researchers.
-            </p>
-          </div>
-
-          <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50 space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-stone-900 text-xs sm:text-sm">
-                USDA FoodData Central
-              </span>
-              <a
-                href="https://fdc.nal.usda.gov"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-emerald-800 font-bold inline-flex items-center gap-1 hover:underline"
-              >
-                fdc.nal.usda.gov <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-            <p className="text-stone-600 leading-relaxed">
-              Maintained by the U.S. Department of Agriculture. Provides official laboratory nutrient values for whole foods and staple crops.
             </p>
           </div>
         </div>

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ProductRecord } from '../types/index.ts';
 import { SAMPLE_SCENARIOS } from '../data/sampleScenarios.ts';
 import { useDietaryPreferences } from '../hooks/useStorage.ts';
@@ -12,12 +12,17 @@ import { ProvenanceBadge, PreferenceBadge } from '../components/EvidenceBadge.ts
 import { DisclaimerBanner } from '../components/DisclaimerBanner.tsx';
 import { ProductSearchInputWithCamera } from '../components/ProductSearchInputWithCamera.tsx';
 import {
+  USDA_STANDARD_BENCHMARKS,
+  usdaItemToProductRecord
+} from '../services/usdaFoodData.ts';
+import {
   ArrowLeftRight,
   Search,
   CheckCircle2,
   AlertTriangle,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  Scale
 } from 'lucide-react';
 
 interface ComparePageProps {
@@ -38,6 +43,14 @@ export const ComparePage: React.FC<ComparePageProps> = ({
   const [productA, setProductA] = useState<ProductRecord>(initialProductA || SAMPLE_SCENARIOS[0]); // Oat Milk
   const [productB, setProductB] = useState<ProductRecord>(initialProductB || SAMPLE_SCENARIOS[1]); // Plant Burger
   const [nutritionView, setNutritionView] = useState<'serving' | '100g'>('serving');
+
+  useEffect(() => {
+    if (initialProductA) setProductA(initialProductA);
+  }, [initialProductA]);
+
+  useEffect(() => {
+    if (initialProductB) setProductB(initialProductB);
+  }, [initialProductB]);
 
   const comparison = compareProducts(productA, productB, rules);
 
@@ -141,8 +154,8 @@ export const ComparePage: React.FC<ComparePageProps> = ({
             />
 
             <div className="flex items-center gap-1.5 text-[11px] text-stone-500 overflow-x-auto pt-0.5">
-              <span className="shrink-0 font-medium">Quick samples:</span>
-              {SAMPLE_SCENARIOS.map((s) => (
+              <span className="shrink-0 font-medium">Quick:</span>
+              {SAMPLE_SCENARIOS.slice(0, 3).map((s) => (
                 <button
                   key={s.id}
                   onClick={() => setProductB(s)}
@@ -155,6 +168,37 @@ export const ComparePage: React.FC<ComparePageProps> = ({
                   {s.name.split(' ')[0]}
                 </button>
               ))}
+              <span className="shrink-0 text-stone-300">|</span>
+              <button
+                onClick={() => setProductB(usdaItemToProductRecord(USDA_STANDARD_BENCHMARKS.oatmeal))}
+                className={`px-2 py-0.5 rounded text-[10px] border shrink-0 flex items-center gap-1 ${
+                  productB.id === `usda-${USDA_STANDARD_BENCHMARKS.oatmeal.fdcId}`
+                    ? 'bg-blue-900 text-white border-blue-950 font-bold'
+                    : 'bg-blue-50/70 text-blue-950 border-blue-200 hover:bg-blue-100'
+                }`}
+              >
+                <Scale className="w-2.5 h-2.5" /> USDA Oats
+              </button>
+              <button
+                onClick={() => setProductB(usdaItemToProductRecord(USDA_STANDARD_BENCHMARKS.cheerios))}
+                className={`px-2 py-0.5 rounded text-[10px] border shrink-0 flex items-center gap-1 ${
+                  productB.id === `usda-${USDA_STANDARD_BENCHMARKS.cheerios.fdcId}`
+                    ? 'bg-blue-900 text-white border-blue-950 font-bold'
+                    : 'bg-blue-50/70 text-blue-950 border-blue-200 hover:bg-blue-100'
+                }`}
+              >
+                <Scale className="w-2.5 h-2.5" /> USDA Cheerios
+              </button>
+              <button
+                onClick={() => setProductB(usdaItemToProductRecord(USDA_STANDARD_BENCHMARKS.milk))}
+                className={`px-2 py-0.5 rounded text-[10px] border shrink-0 flex items-center gap-1 ${
+                  productB.id === `usda-${USDA_STANDARD_BENCHMARKS.milk.fdcId}`
+                    ? 'bg-blue-900 text-white border-blue-950 font-bold'
+                    : 'bg-blue-50/70 text-blue-950 border-blue-200 hover:bg-blue-100'
+                }`}
+              >
+                <Scale className="w-2.5 h-2.5" /> USDA Milk
+              </button>
             </div>
           </div>
         </div>
