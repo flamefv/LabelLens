@@ -34,6 +34,8 @@ export type SearchItemSource =
   | 'scenario'
   | 'direct_barcode';
 
+export type DataAvailabilityStatus = boolean | 'unverified';
+
 export interface UnifiedSearchResultItem {
   id: string; // e.g. "off-016000275287" or "usda-171689"
   source: SearchItemSource;
@@ -51,9 +53,9 @@ export interface UnifiedSearchResultItem {
   dataType?: string; // e.g. "Foundation Food", "SR Legacy", "Branded Food"
   ingredientPreview?: string;
   availableData: {
-    hasIngredients: boolean;
-    hasNutrition: boolean;
-    hasAllergens: boolean;
+    hasIngredients: DataAvailabilityStatus;
+    hasNutrition: DataAvailabilityStatus;
+    hasAllergens: DataAvailabilityStatus;
     hasImage: boolean;
   };
   rawOffItem?: OffSearchResultItem;
@@ -65,10 +67,12 @@ export interface UnifiedSearchResultItem {
 export interface UnifiedSearchResponse {
   query: string;
   results: UnifiedSearchResultItem[];
-  totalResults: number;
+  totalResults: number; // Count of distinct loaded/displayed results in this response
+  displayedCount: number; // Accurately reflects loaded results displayed
   sourceCounts: {
-    openFoodFacts: number;
-    usdaFoodData: number;
+    openFoodFacts: number; // Loaded Open Food Facts results count
+    openFoodFactsReportedTotal?: number; // Total reported by remote server if available
+    usdaFoodData: number; // Loaded USDA results count
     catalog: number;
     scenarios: number;
   };
@@ -85,7 +89,7 @@ const resolvedProductCache = new Map<string, ProductRecord>();
 /**
  * Truncates an ingredient string cleanly for unified result previews.
  */
-function createIngredientPreview(text?: string, maxLength = 85): string | undefined {
+export function createIngredientPreview(text?: string, maxLength = 85): string | undefined {
   if (!text || !text.trim()) return undefined;
   const cleaned = text.replace(/^(ingredients?|contents?)\s*[:\-]\s*/i, '').trim();
   if (cleaned.length <= maxLength) return cleaned;
@@ -93,11 +97,90 @@ function createIngredientPreview(text?: string, maxLength = 85): string | undefi
 }
 
 /**
+ * Updates availability indicators and preview on a search result item when full details are resolved.
+ */
+export function updateItemWithResolvedProduct(
+  item: UnifiedSearchResultItem,
+  record: ProductRecord
+): void {
+  item.localProduct = record;
+  const hasIngredients = Boolean(record.ingredientsText && record.ingredientsText.trim().length > 0);
+  const hasNutrition = Boolean(
+    record.nutritionFacts &&
+    (record.nutritionFacts.calories !== undefined || record.nutritionFacts.protein !== undefined)
+  );
+  const hasAllergens = record.declaredAllergens.length > 0;
+  const hasImage = Boolean(
+    record.imageUrl &&
+    record.imageUrl.trim().length > 0 &&
+    !record.imageUrl.includes('placeholder')
+  );
+
+  item.availableData = {
+    hasIngredients,
+    hasNutrition,
+    hasAllergens,
+    hasImage
+  };
+
+  if (hasIngredients && record.ingredientsText) {
+    item.ingredientPreview = createIngredientPreview(record.ingredientsText);
+  }
+
+  if (record.nutritionFacts?.calories !== undefined) {
+    item.calories = record.nutritionFacts.calories;
+  }
+  if (record.servingSize && !item.servingSize) {
+    item.servingSize = record.servingSize;
+  }
+  if (record.imageUrl && !item.imageUrl) {
+    item.imageUrl = record.imageUrl;
+  }
+  if (record.brand && !item.brand) {
+    item.brand = record.brand;
+  }
+}
+
+/**
  * Normalizes Open Food Facts search result into common format without discarding source-specific data.
+ * Accurately represents data availability without inferring ingredient or allergen presence from unrelated fields.
  */
 export function normalizeOffSearchResult(item: OffSearchResultItem): UnifiedSearchResultItem {
-  const hasIngredients = Boolean(item.categories || item.servingSize); // Detailed ingredients populated upon record inspection
-  const hasNutrition = item.calories !== undefined;
+  // Only declare ingredients available if actual ingredient text is present
+  const hasIngredients: DataAvailabilityStatus =
+    item.ingredientsText !== undefined
+      ? Boolean(item.ingredientsText && item.ingredientsText.trim().length > 0)
+      : 'unverified';
+
+  // Only declare nutrition available if actual nutritional values are present
+  const hasNutrition: DataAvailabilityStatus =
+    item.calories !== undefined
+      ? true
+      : item.nutriments && Object.keys(item.nutriments).length > 0
+      ? true
+      : item.nutriments !== undefined
+      ? false
+      : 'unverified';
+
+  // Only declare allergens available if actual allergen declarations or tags exist
+  const hasAllergens: DataAvailabilityStatus =
+    item.allergensTags !== undefined || item.allergens !== undefined
+      ? Boolean(
+          (item.allergensTags && item.allergensTags.length > 0) ||
+          (item.allergens && item.allergens.trim().length > 0)
+        )
+      : 'unverified';
+
+  const hasImage = Boolean(
+    item.imageUrl &&
+    item.imageUrl.trim().length > 0 &&
+    !item.imageUrl.includes('placeholder')
+  );
+
+  const ingredientPreview =
+    item.ingredientsText && item.ingredientsText.trim().length > 0
+      ? createIngredientPreview(item.ingredientsText)
+      : undefined;
 
   return {
     id: `off-${item.code}`,
@@ -114,12 +197,12 @@ export function normalizeOffSearchResult(item: OffSearchResultItem): UnifiedSear
     servingSize: item.servingSize,
     category: item.categories,
     dataType: 'Public Database',
-    ingredientPreview: undefined, // Fetched during full record lookup
+    ingredientPreview,
     availableData: {
       hasIngredients,
       hasNutrition,
-      hasAllergens: true, // Evaluated on full record
-      hasImage: Boolean(item.imageUrl)
+      hasAllergens,
+      hasImage
     },
     rawOffItem: item
   };
@@ -131,7 +214,10 @@ export function normalizeOffSearchResult(item: OffSearchResultItem): UnifiedSear
 export function normalizeUsdaFoodItem(food: UsdaFoodItem): UnifiedSearchResultItem {
   const nutrition = usdaItemToNutrition(food);
   const hasIngredients = Boolean(food.ingredients && food.ingredients.trim().length > 0);
-  const hasNutrition = nutrition.calories !== undefined || nutrition.protein !== undefined;
+  const hasNutrition =
+    nutrition.calories !== undefined ||
+    nutrition.protein !== undefined ||
+    (food.foodNutrients && food.foodNutrients.length > 0);
 
   return {
     id: `usda-${food.fdcId}`,
@@ -179,7 +265,7 @@ export function normalizeCatalogItem(item: CatalogItem): UnifiedSearchResultItem
     dataType: 'Audited Catalog',
     ingredientPreview: createIngredientPreview(item.ingredientsText),
     availableData: {
-      hasIngredients: Boolean(item.ingredientsText),
+      hasIngredients: Boolean(item.ingredientsText && item.ingredientsText.trim().length > 0),
       hasNutrition: item.calories !== undefined,
       hasAllergens: (item.declaredAllergens?.length || 0) > 0,
       hasImage: false
@@ -208,18 +294,21 @@ export function normalizeScenarioItem(scenario: ProductRecord): UnifiedSearchRes
     dataType: 'Audited Demonstration',
     ingredientPreview: createIngredientPreview(scenario.ingredientsText),
     availableData: {
-      hasIngredients: Boolean(scenario.ingredientsText),
-      hasNutrition: Boolean(scenario.nutritionFacts),
+      hasIngredients: Boolean(scenario.ingredientsText && scenario.ingredientsText.trim().length > 0),
+      hasNutrition: Boolean(
+        scenario.nutritionFacts &&
+        (scenario.nutritionFacts.calories !== undefined || scenario.nutritionFacts.protein !== undefined)
+      ),
       hasAllergens: scenario.declaredAllergens.length > 0,
-      hasImage: Boolean(scenario.imageUrl)
+      hasImage: Boolean(scenario.imageUrl && scenario.imageUrl.trim().length > 0)
     },
     localProduct: scenario
   };
 }
 
 /**
- * Executes a unified, non-exclusive search across both Open Food Facts and USDA FoodData Central
- * in parallel with graceful degradation if either service is unreachable.
+ * Executes a unified, non-exclusive search across Open Food Facts, USDA FoodData Central,
+ * and local catalog sources with parallel querying, fault tolerance, and accurate counts.
  */
 export async function searchUnified(
   query: string,
@@ -234,6 +323,7 @@ export async function searchUnified(
     query: trimmed,
     results: [],
     totalResults: 0,
+    displayedCount: 0,
     sourceCounts: {
       openFoodFacts: 0,
       usdaFoodData: 0,
@@ -244,43 +334,104 @@ export async function searchUnified(
     isBarcodeMatch: isNumericBarcode
   };
 
-  // If query is a direct numeric barcode
+  // If query is a direct numeric barcode:
+  // Trigger a direct Open Food Facts barcode lookup and local catalog check.
+  // USDA is NOT queried with barcodes as though they were food names.
   if (isNumericBarcode) {
-    const directItem: UnifiedSearchResultItem = {
-      id: `direct-barcode-${cleanDigits}`,
-      source: 'direct_barcode',
-      sourceLabel: 'Barcode Query',
-      sourceBadgeClass: 'bg-emerald-100 text-emerald-950 border-emerald-300',
-      sourceIdentifier: `UPC: ${cleanDigits}`,
-      rawId: cleanDigits,
-      name: `Look up Barcode #${cleanDigits}`,
-      brand: 'Direct Database Query',
-      barcode: cleanDigits,
-      dataType: 'Universal Product Code',
-      availableData: {
-        hasIngredients: false,
-        hasNutrition: false,
-        hasAllergens: false,
-        hasImage: false
+    // 1. Check local scenario matches by barcode
+    const scenarioMatches = SAMPLE_SCENARIOS.filter((s) => s.barcode === cleanDigits).map(normalizeScenarioItem);
+    response.sourceCounts.scenarios = scenarioMatches.length;
+
+    // 2. Check local curated catalog matches by barcode
+    const catalogMatches = FOOD_CATALOG.filter((c) => c.code === cleanDigits).map(normalizeCatalogItem);
+    response.sourceCounts.catalog = catalogMatches.length;
+
+    // 3. Check in-memory resolved product cache or query Open Food Facts directly
+    const cachedRecord =
+      resolvedProductCache.get(cleanDigits) ||
+      resolvedProductCache.get(`off-${cleanDigits}`);
+
+    let offRecord: ProductRecord | null = cachedRecord || null;
+
+    if (!offRecord) {
+      try {
+        offRecord = await fetchProductByBarcode(cleanDigits);
+      } catch {
+        response.partialFailures.openFoodFacts = true;
       }
-    };
-
-    // Check if barcode matches local catalog or scenarios first
-    const catalogMatch = FOOD_CATALOG.find((c) => c.code === cleanDigits);
-    const scenarioMatch = SAMPLE_SCENARIOS.find((s) => s.barcode === cleanDigits);
-
-    const matches: UnifiedSearchResultItem[] = [directItem];
-    if (scenarioMatch) {
-      matches.push(normalizeScenarioItem(scenarioMatch));
-      response.sourceCounts.scenarios++;
     }
-    if (catalogMatch) {
-      matches.push(normalizeCatalogItem(catalogMatch));
-      response.sourceCounts.catalog++;
+
+    const matches: UnifiedSearchResultItem[] = [];
+
+    // Add local scenarios
+    scenarioMatches.forEach((s) => matches.push(s));
+
+    // Add catalog matches (preserving source separation)
+    catalogMatches.forEach((c) => {
+      if (!matches.some((m) => m.id === c.id)) {
+        matches.push(c);
+      }
+    });
+
+    // Add confirmed Open Food Facts record if found
+    if (offRecord) {
+      // Cache both by barcode and by off- ID to avoid duplicate lookups
+      resolvedProductCache.set(cleanDigits, offRecord);
+      resolvedProductCache.set(`off-${cleanDigits}`, offRecord);
+      if (offRecord.id) {
+        resolvedProductCache.set(offRecord.id, offRecord);
+      }
+
+      const hasIngredients = Boolean(offRecord.ingredientsText && offRecord.ingredientsText.trim().length > 0);
+      const hasNutrition = Boolean(
+        offRecord.nutritionFacts &&
+        (offRecord.nutritionFacts.calories !== undefined || offRecord.nutritionFacts.protein !== undefined)
+      );
+      const hasAllergens = offRecord.declaredAllergens.length > 0;
+      const hasImage = Boolean(
+        offRecord.imageUrl &&
+        offRecord.imageUrl.trim().length > 0 &&
+        !offRecord.imageUrl.includes('placeholder')
+      );
+
+      const offItem: UnifiedSearchResultItem = {
+        id: `off-${cleanDigits}`,
+        source: 'open_food_facts',
+        sourceLabel: 'Open Food Facts',
+        sourceBadgeClass: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+        sourceIdentifier: `UPC: ${cleanDigits}`,
+        rawId: cleanDigits,
+        name: offRecord.name,
+        brand: offRecord.brand,
+        barcode: cleanDigits,
+        imageUrl: offRecord.imageUrl,
+        calories: offRecord.nutritionFacts?.calories,
+        servingSize: offRecord.servingSize,
+        dataType: 'Public Database',
+        ingredientPreview: createIngredientPreview(offRecord.ingredientsText),
+        availableData: {
+          hasIngredients,
+          hasNutrition,
+          hasAllergens,
+          hasImage
+        },
+        localProduct: offRecord
+      };
+
+      if (!matches.some((m) => m.id === offItem.id)) {
+        matches.push(offItem);
+      }
+      response.sourceCounts.openFoodFacts = 1;
+    } else {
+      response.sourceCounts.openFoodFacts = 0;
     }
+
+    // Explicitly 0 for USDA: USDA is NEVER queried using numeric barcodes as food names
+    response.sourceCounts.usdaFoodData = 0;
 
     response.results = matches;
     response.totalResults = matches.length;
+    response.displayedCount = matches.length;
     return response;
   }
 
@@ -319,12 +470,14 @@ export async function searchUnified(
   const [offSettled, usdaSettled] = await resultsPromise;
 
   const offResults: UnifiedSearchResultItem[] = [];
+  let offReportedTotal: number | undefined = undefined;
+
   if (offSettled.status === 'fulfilled') {
     const paged = offSettled.value;
     paged.products.forEach((p) => {
       offResults.push(normalizeOffSearchResult(p));
     });
-    response.sourceCounts.openFoodFacts = paged.totalCount || offResults.length;
+    offReportedTotal = paged.totalCount;
   } else {
     response.partialFailures.openFoodFacts = true;
   }
@@ -335,14 +488,12 @@ export async function searchUnified(
     foods.forEach((f) => {
       usdaResults.push(normalizeUsdaFoodItem(f));
     });
-    response.sourceCounts.usdaFoodData = usdaResults.length;
   } else {
     response.partialFailures.usdaFoodData = true;
     // Fall back to standard reference benchmark if offline
     const fallbackBenchmark = findUsdaStandardBenchmark(trimmed);
     if (fallbackBenchmark) {
       usdaResults.push(normalizeUsdaFoodItem(fallbackBenchmark));
-      response.sourceCounts.usdaFoodData = 1;
     }
   }
 
@@ -379,29 +530,38 @@ export async function searchUnified(
 
   const allItems = Array.from(combinedMap.values());
   response.results = allItems;
-  response.totalResults =
-    scenarioMatches.length +
-    localCatalogMatches.length +
-    response.sourceCounts.openFoodFacts +
-    response.sourceCounts.usdaFoodData;
+  response.displayedCount = allItems.length;
+  response.totalResults = allItems.length;
+
+  response.sourceCounts = {
+    openFoodFacts: offResults.length,
+    openFoodFactsReportedTotal: offReportedTotal,
+    usdaFoodData: usdaResults.length,
+    catalog: localCatalogMatches.length,
+    scenarios: scenarioMatches.length
+  };
 
   return response;
 }
 
 /**
  * Resolves a selected UnifiedSearchResultItem into a full ProductRecord for inspection and comparison.
+ * Never fabricates values or returns synthetic placeholders if a product is not found.
  */
 export async function resolveUnifiedProductRecord(
   item: UnifiedSearchResultItem
 ): Promise<ProductRecord | null> {
   // Check in-memory cache first
   if (resolvedProductCache.has(item.id)) {
-    return resolvedProductCache.get(item.id)!;
+    const cached = resolvedProductCache.get(item.id)!;
+    updateItemWithResolvedProduct(item, cached);
+    return cached;
   }
 
   // Option 1: Sample scenario
   if (item.source === 'scenario' && item.localProduct) {
     resolvedProductCache.set(item.id, item.localProduct);
+    updateItemWithResolvedProduct(item, item.localProduct);
     return item.localProduct;
   }
 
@@ -409,6 +569,7 @@ export async function resolveUnifiedProductRecord(
   if (item.source === 'catalog' && item.catalogItem) {
     const record = catalogItemToProductRecord(item.catalogItem);
     resolvedProductCache.set(item.id, record);
+    updateItemWithResolvedProduct(item, record);
     return record;
   }
 
@@ -417,6 +578,7 @@ export async function resolveUnifiedProductRecord(
     if (item.rawUsdaItem) {
       const record = usdaItemToProductRecord(item.rawUsdaItem);
       resolvedProductCache.set(item.id, record);
+      updateItemWithResolvedProduct(item, record);
       return record;
     }
 
@@ -426,6 +588,7 @@ export async function resolveUnifiedProductRecord(
       if (fetched) {
         const record = usdaItemToProductRecord(fetched);
         resolvedProductCache.set(item.id, record);
+        updateItemWithResolvedProduct(item, record);
         return record;
       }
     }
@@ -433,53 +596,26 @@ export async function resolveUnifiedProductRecord(
 
   // Option 4: Open Food Facts record or direct barcode
   if (item.source === 'open_food_facts' || item.source === 'direct_barcode') {
-    const barcode = item.rawId;
-    const fetched = await fetchProductByBarcode(barcode);
-    if (fetched) {
-      resolvedProductCache.set(item.id, fetched);
-      return fetched;
+    if (item.localProduct) {
+      resolvedProductCache.set(item.id, item.localProduct);
+      updateItemWithResolvedProduct(item, item.localProduct);
+      return item.localProduct;
     }
 
-    // Build fallback record with honest limitations if remote lookup yields 404
-    const fallbackRecord: ProductRecord = {
-      id: item.rawId,
-      name: item.name,
-      brand: item.brand,
-      barcode: item.barcode || item.rawId,
-      imageUrl: item.imageUrl,
-      sourceUrl: `https://world.openfoodfacts.org/product/${item.rawId}`,
-      sourceType: 'open_food_facts',
-      dataCompleteness: 'Moderate',
-      ingredientsText: 'Ingredients listed on physical container label.',
-      ingredientsList: [],
-      declaredAllergens: [],
-      precautionaryStatements: [],
-      nutritionFacts: item.calories
-        ? {
-            servingSize: item.servingSize || '1 serving',
-            calories: item.calories
-          }
-        : undefined,
-      servingSize: item.servingSize,
-      sources: [
-        {
-          title: `Open Food Facts Record: ${item.name}`,
-          publisher: 'Open Food Facts Public Collaborative Database',
-          url: `https://world.openfoodfacts.org/product/${item.rawId}`,
-          relevantPassage: `Public database record for barcode ${item.rawId}.`,
-          retrievalDate: new Date().toISOString().split('T')[0],
-          sourceType: 'public_database'
-        }
-      ],
-      limitations: [
-        'Detailed ingredient statement was not available in this Open Food Facts record.',
-        'Review the physical package label for full ingredient disclosures.'
-      ],
-      isDemo: false
-    };
+    const barcode = item.rawId;
+    try {
+      const fetched = await fetchProductByBarcode(barcode);
+      if (fetched) {
+        resolvedProductCache.set(item.id, fetched);
+        resolvedProductCache.set(barcode, fetched);
+        updateItemWithResolvedProduct(item, fetched);
+        return fetched;
+      }
+    } catch {
+      return null;
+    }
 
-    resolvedProductCache.set(item.id, fallbackRecord);
-    return fallbackRecord;
+    return null;
   }
 
   return null;
@@ -498,7 +634,9 @@ export async function fetchUnifiedProductById(id: string): Promise<ProductRecord
   }
 
   // 1. Check verified demo scenarios
-  const scenario = getSampleScenario(cleanId) || SAMPLE_SCENARIOS.find((s) => s.id === cleanId || s.barcode === cleanId);
+  const scenario =
+    getSampleScenario(cleanId) ||
+    SAMPLE_SCENARIOS.find((s) => s.id === cleanId || s.barcode === cleanId);
   if (scenario) {
     resolvedProductCache.set(cleanId, scenario);
     return scenario;
@@ -549,12 +687,13 @@ export async function fetchUnifiedProductById(id: string): Promise<ProductRecord
   }
 
   // 4. Default: Barcode lookup via Open Food Facts (only if candidate has >= 4 digits)
-  const numericCandidate = cleanId.replace(/[^\d]/g, '');
+  const numericCandidate = cleanId.replace(/^off-/i, '').replace(/[^\d]/g, '');
   if (numericCandidate.length >= 4) {
     try {
       const barcodeRecord = await fetchProductByBarcode(numericCandidate);
       if (barcodeRecord) {
         resolvedProductCache.set(cleanId, barcodeRecord);
+        resolvedProductCache.set(numericCandidate, barcodeRecord);
         return barcodeRecord;
       }
     } catch {

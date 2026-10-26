@@ -216,6 +216,9 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
       items = searchFoodCatalog('', selectedCategory).map(normalizeCatalogItem);
     }
 
+    const cleanDigits = query.trim().replace(/[-\s]/g, '');
+    const isNumeric = /^\d{4,16}$/.test(cleanDigits);
+
     if (activeSourceFilter === 'open_food_facts') {
       return items.filter((item) => item.source === 'open_food_facts' || item.source === 'catalog');
     }
@@ -268,7 +271,7 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
         if (product) {
           onProductSelected(product);
         } else {
-          setErrorMessage(`No product found for barcode "${cleanNum}". Try searching by food name.`);
+          setErrorMessage(`No product record found for barcode "${cleanNum}" in Open Food Facts or local catalog. Verify the digits or search by food name.`);
         }
       } catch (err: unknown) {
         setErrorMessage(err instanceof Error ? err.message : 'Lookup failed.');
@@ -373,6 +376,9 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
       </>
     );
   }, []);
+
+  const cleanQueryDigits = query.trim().replace(/[-\s]/g, '');
+  const isQueryBarcode = /^\d{4,16}$/.test(cleanQueryDigits);
 
   return (
     <div ref={containerRef} className="space-y-2 relative">
@@ -500,10 +506,12 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
             <div className="flex flex-wrap items-center justify-between text-xs gap-1.5">
               <span className="font-bold text-stone-800 flex items-center gap-1.5">
                 <Database className="w-3.5 h-3.5 text-emerald-800" />
-                <span>Unified Food Database</span>
-                <span className="text-[11px] font-normal text-stone-500">
-                  (Open Food Facts + USDA FoodData Central)
-                </span>
+                <span>Unified Food Search</span>
+                {visibleSuggestions.length > 0 && query.trim().length >= 2 && (
+                  <span className="text-[11px] font-normal text-stone-500">
+                    ({visibleSuggestions.length} results shown: {sourceCounts.openFoodFacts} Open Food Facts, {sourceCounts.usdaFoodData} USDA Central)
+                  </span>
+                )}
               </span>
 
               {(isSearchingSuggestions || isLoadingCategory) && (
@@ -514,7 +522,7 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
               )}
             </div>
 
-            {/* Optional Source View Filter (All Sources default) */}
+            {/* Source View Filter with accurate 'results shown' label */}
             <div className="flex items-center gap-1.5 text-[11px]">
               <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider shrink-0 flex items-center gap-0.5">
                 <Filter className="w-3 h-3" /> View:
@@ -528,7 +536,7 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
                     : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
                 }`}
               >
-                All Sources ({visibleSuggestions.length})
+                All Sources ({visibleSuggestions.length} shown)
               </button>
               <button
                 type="button"
@@ -622,6 +630,13 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
                       Querying Open Food Facts & USDA FoodData Central...
                     </p>
                   </div>
+                ) : isQueryBarcode ? (
+                  <>
+                    <p className="font-semibold text-stone-800">No product found for barcode &quot;{cleanQueryDigits}&quot;</p>
+                    <p className="text-[11px] text-stone-600 max-w-sm mx-auto">
+                      No record was found in Open Food Facts or the catalog for this code. Verify the package digits, search by food name, or take a photo with the Camera.
+                    </p>
+                  </>
                 ) : (
                   <>
                     <p className="font-semibold text-stone-700">No products found matching &quot;{query}&quot;</p>
@@ -695,11 +710,31 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
                             <span className="text-stone-700 font-medium">
                               &bull; {item.calories} cal
                             </span>
-                          ) : (
+                          ) : item.availableData.hasNutrition === false ? (
                             <span className="text-stone-400 text-[10px]">
                               &bull; Nutrition unlisted
                             </span>
+                          ) : (
+                            <span className="text-stone-400 text-[10px]">
+                              &bull; Nutrition unverified
+                            </span>
                           )}
+
+                          {item.availableData.hasIngredients === true ? (
+                            <span className="text-emerald-800 font-medium text-[10px]">
+                              &bull; Ingredients listed
+                            </span>
+                          ) : item.availableData.hasIngredients === false ? (
+                            <span className="text-stone-400 text-[10px]">
+                              &bull; No ingredients
+                            </span>
+                          ) : null}
+
+                          {item.availableData.hasAllergens === true ? (
+                            <span className="text-amber-800 font-medium text-[10px]">
+                              &bull; Allergens declared
+                            </span>
+                          ) : null}
 
                           {item.servingSize && (
                             <span className="text-stone-400 hidden sm:inline">

@@ -370,5 +370,119 @@ test('resolveUnifiedProductRecord creates complete ProductRecord without fabrica
   assert.ok(Array.isArray(fullRecord?.limitations), 'Product must have limitations array');
 });
 
+test('normalizeOffSearchResult accurately reflects real data availability indicators and never infers ingredients from categories or serving size', async () => {
+  const { normalizeOffSearchResult } = await import('../services/unifiedSearch.ts');
+
+  // Case 1: Item has categories and serving size, but NO ingredients text
+  const itemWithoutIngredients = {
+    code: '1234567890',
+    name: 'Test Cereal',
+    categories: 'Breakfast cereals, Cereals and potatoes',
+    servingSize: '30 g',
+    calories: 120,
+    sourceType: 'open_food_facts' as const
+  };
+
+  const normalized1 = normalizeOffSearchResult(itemWithoutIngredients);
+  // Must NOT infer ingredients just because categories or servingSize exist
+  assert.notEqual(normalized1.availableData.hasIngredients, true, 'Must not mark ingredients available based on categories or servingSize');
+  assert.equal(normalized1.availableData.hasIngredients, 'unverified', 'Must represent unverified ingredients status honestly');
+  assert.equal(normalized1.availableData.hasNutrition, true, 'Nutrition is available because calories are provided');
+  assert.equal(normalized1.availableData.hasAllergens, 'unverified', 'Must not assume allergens without declaration');
+  assert.equal(normalized1.availableData.hasImage, false, 'No image URL provided');
+
+  // Case 2: Item with explicit ingredients and declared allergens
+  const itemWithFullData = {
+    code: '9876543210',
+    name: 'Organic Granola',
+    ingredientsText: 'Rolled oats, maple syrup, almonds, pumpkin seeds.',
+    allergensTags: ['en:almonds'],
+    calories: 210,
+    imageUrl: 'https://images.openfoodfacts.org/images/products/987/front.jpg',
+    sourceType: 'open_food_facts' as const
+  };
+
+  const normalized2 = normalizeOffSearchResult(itemWithFullData);
+  assert.equal(normalized2.availableData.hasIngredients, true, 'Ingredients must be marked available');
+  assert.equal(normalized2.availableData.hasNutrition, true, 'Nutrition must be marked available');
+  assert.equal(normalized2.availableData.hasAllergens, true, 'Allergens must be marked available');
+  assert.equal(normalized2.availableData.hasImage, true, 'Image must be marked available');
+  assert.ok(normalized2.ingredientPreview?.includes('Rolled oats'), 'Must generate ingredient preview');
+
+  // Case 3: Item with empty ingredients string
+  const itemWithEmptyIngredients = {
+    code: '5555555555',
+    name: 'Mystery Product',
+    ingredientsText: '   ',
+    sourceType: 'open_food_facts' as const
+  };
+  const normalized3 = normalizeOffSearchResult(itemWithEmptyIngredients);
+  assert.equal(normalized3.availableData.hasIngredients, false, 'Empty ingredients string must be marked false, not true');
+});
+
+test('searchUnified with barcode handles formatted input, queries directly without USDA text search, and returns no placeholders for missing barcodes', async () => {
+  const { searchUnified } = await import('../services/unifiedSearch.ts');
+
+  // 1. Formatted barcode query (with dashes)
+  const formattedBarcode = '0-16000-27528-7'; // Honey Nut Cheerios in local catalog
+  const res = await searchUnified(formattedBarcode, 'All');
+
+  assert.equal(res.isBarcodeMatch, true, 'Must recognize numeric barcode with dashes');
+  assert.equal(res.sourceCounts.usdaFoodData, 0, 'USDA must NOT be queried with numeric barcode as food name');
+  assert.ok(res.results.length > 0, 'Must find matching record');
+  const found = res.results[0];
+  assert.equal(found.barcode, '016000275287', 'Normalized barcode must match clean digits');
+  assert.notEqual(found.source, 'direct_barcode', 'Must return actual record, not generic placeholder');
+
+  // 2. Barcode that does not exist in any database
+  const nonExistentBarcode = '99999999999999';
+  const missingRes = await searchUnified(nonExistentBarcode, 'All');
+
+  assert.equal(missingRes.isBarcodeMatch, true);
+  assert.equal(missingRes.totalResults, 0, 'Must return 0 totalResults for missing barcode');
+  assert.equal(missingRes.results.length, 0, 'Must not return synthetic placeholder as though it were confirmed');
+  assert.equal(missingRes.sourceCounts.usdaFoodData, 0, 'Must not query USDA for missing barcode');
+});
+
+test('searchUnified computes honest result counts without summing unretrieved remote server totals', async () => {
+  const { searchUnified } = await import('../services/unifiedSearch.ts');
+
+  const res = await searchUnified('oat', 'All', 20);
+
+  // totalResults must equal the count of distinct results currently loaded and displayed
+  assert.equal(res.totalResults, res.results.length, 'totalResults must equal number of loaded results');
+  assert.equal(res.displayedCount, res.results.length, 'displayedCount must equal results.length');
+
+  // Remote reported total should be tracked separately without inflating totalResults
+  if (res.sourceCounts.openFoodFactsReportedTotal !== undefined) {
+    assert.ok(
+      res.sourceCounts.openFoodFactsReportedTotal >= res.sourceCounts.openFoodFacts,
+      'Reported remote total must be tracked separately'
+    );
+  }
+});
+
+test('resolveUnifiedProductRecord updates availability indicators and preview when full record is resolved', async () => {
+  const { normalizeOffSearchResult, resolveUnifiedProductRecord } = await import('../services/unifiedSearch.ts');
+
+  // Start with an unverified search result item
+  const initialItem = normalizeOffSearchResult({
+    code: '016000275287',
+    name: 'Honey Nut Cheerios',
+    sourceType: 'open_food_facts' as const
+  });
+
+  assert.equal(initialItem.availableData.hasIngredients, 'unverified');
+
+  const resolved = await resolveUnifiedProductRecord(initialItem);
+  assert.ok(resolved, 'Must resolve Honey Nut Cheerios');
+
+  // Verify that initialItem has had its availability indicators updated
+  assert.equal(initialItem.availableData.hasIngredients, true, 'Must update hasIngredients to true upon resolving');
+  assert.equal(initialItem.availableData.hasNutrition, true, 'Must update hasNutrition to true upon resolving');
+  assert.ok(initialItem.ingredientPreview?.length, 'Must populate ingredientPreview upon resolving');
+});
+
+
 
 

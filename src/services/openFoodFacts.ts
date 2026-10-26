@@ -194,6 +194,12 @@ export interface OffSearchResultItem {
   servingSize?: string;
   badge?: string;
   sourceType: 'open_food_facts';
+  ingredientsText?: string;
+  allergens?: string;
+  allergensTags?: string[];
+  traces?: string;
+  tracesTags?: string[];
+  nutriments?: Record<string, number | string>;
 }
 
 export interface OffSearchPagedResult {
@@ -374,6 +380,12 @@ export async function searchOpenFoodFactsPaged(
           product_name_en?: string;
           brands?: string;
           categories?: string;
+          ingredients_text?: string;
+          ingredients_text_en?: string;
+          allergens?: string;
+          allergens_tags?: string[];
+          traces?: string;
+          traces_tags?: string[];
           image_front_small_url?: string;
           image_url?: string;
           serving_size?: string;
@@ -393,6 +405,8 @@ export async function searchOpenFoodFactsPaged(
               ? Math.round(p.nutriments['energy-kcal_serving'])
               : undefined;
 
+          const ingText = p.ingredients_text || p.ingredients_text_en;
+
           return {
             code: p.code,
             name: p.product_name || p.product_name_en || 'Unknown Product',
@@ -402,7 +416,13 @@ export async function searchOpenFoodFactsPaged(
             calories: cal,
             servingSize: p.serving_size,
             badge: p.brands ? `Brand: ${p.brands.split(',')[0].trim()}` : 'Open Food Facts',
-            sourceType: 'open_food_facts'
+            sourceType: 'open_food_facts',
+            ingredientsText: ingText || undefined,
+            allergens: p.allergens,
+            allergensTags: p.allergens_tags,
+            traces: p.traces,
+            tracesTags: p.traces_tags,
+            nutriments: p.nutriments
           };
         });
 
@@ -433,6 +453,8 @@ export async function searchOpenFoodFactsPaged(
         .filter((h: Record<string, unknown>) => (h.code || h._id) && (h.product_name || h.product_name_en))
         .map((h: Record<string, unknown>) => {
           const brands = Array.isArray(h.brands) ? h.brands.join(', ') : (h.brands as string);
+          const ingText = (h.ingredients_text as string) || (h.ingredients_text_en as string);
+          const allergens = Array.isArray(h.allergens_tags) ? h.allergens_tags.join(', ') : (h.allergens as string);
           return {
             code: String(h.code || h._id),
             name: String(h.product_name || h.product_name_en),
@@ -440,7 +462,9 @@ export async function searchOpenFoodFactsPaged(
             imageUrl: String(h.image_front_small_url || h.image_url || ''),
             categories: String(h.categories || ''),
             badge: brands ? `Brand: ${brands.split(',')[0].trim()}` : 'Open Food Facts',
-            sourceType: 'open_food_facts'
+            sourceType: 'open_food_facts',
+            ingredientsText: ingText || undefined,
+            allergens: allergens || undefined
           };
         });
 
@@ -509,6 +533,12 @@ export async function fetchCategoryFromOpenFoodFacts(
           product_name_en?: string;
           brands?: string;
           categories?: string;
+          ingredients_text?: string;
+          ingredients_text_en?: string;
+          allergens?: string;
+          allergens_tags?: string[];
+          traces?: string;
+          traces_tags?: string[];
           image_front_small_url?: string;
           image_url?: string;
           serving_size?: string;
@@ -528,6 +558,8 @@ export async function fetchCategoryFromOpenFoodFacts(
               ? Math.round(p.nutriments['energy-kcal_serving'])
               : undefined;
 
+          const ingText = p.ingredients_text || p.ingredients_text_en;
+
           return {
             code: p.code,
             name: p.product_name || p.product_name_en || 'Unknown Product',
@@ -537,7 +569,13 @@ export async function fetchCategoryFromOpenFoodFacts(
             calories: cal,
             servingSize: p.serving_size,
             badge: p.brands ? p.brands.split(',')[0].trim() : 'Live API Item',
-            sourceType: 'open_food_facts'
+            sourceType: 'open_food_facts',
+            ingredientsText: ingText || undefined,
+            allergens: p.allergens,
+            allergensTags: p.allergens_tags,
+            traces: p.traces,
+            tracesTags: p.traces_tags,
+            nutriments: p.nutriments
           };
         });
 
