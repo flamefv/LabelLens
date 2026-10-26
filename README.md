@@ -1,6 +1,5 @@
 # LabelLens: Evidence-Based Food Intelligence Platform
 
-> **Tagline:** Understand what's in your food. Know what the evidence says.
 
 LabelLens helps users understand packaged food labels, investigate unfamiliar ingredients, compare products, and evaluate items against dietary preferences using actual product data and traceable sources—built on a strict **zero-paid-API architecture**.
 
