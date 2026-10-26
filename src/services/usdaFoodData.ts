@@ -230,9 +230,7 @@ export async function searchUsdaFoodData(query: string, apiKey?: string): Promis
     clearTimeout(timeoutId);
 
     if (!res.ok) {
-      // Fallback to local verified benchmarks if rate limited or offline
-      const benchmark = findUsdaStandardBenchmark(trimmed);
-      return benchmark ? [benchmark] : [];
+      throw new Error(`USDA API responded with HTTP ${res.status}`);
     }
 
     const data = (await res.json()) as UsdaSearchResult;
@@ -243,9 +241,8 @@ export async function searchUsdaFoodData(query: string, apiKey?: string): Promis
       usdaSearchCache.set(trimmed, items);
     }
     return items;
-  } catch {
-    const benchmark = findUsdaStandardBenchmark(trimmed);
-    return benchmark ? [benchmark] : [];
+  } catch (err) {
+    throw err;
   }
 }
 
@@ -278,6 +275,7 @@ export async function fetchUsdaFoodById(fdcId: number, apiKey?: string): Promise
  */
 export function usdaItemToNutrition(food: UsdaFoodItem): NutritionFacts {
   const getNutrient = (names: string[]): number | undefined => {
+    if (!food.foodNutrients || !Array.isArray(food.foodNutrients)) return undefined;
     const found = food.foodNutrients.find((n) =>
       names.some((name) => n.nutrientName.toLowerCase().includes(name.toLowerCase()))
     );

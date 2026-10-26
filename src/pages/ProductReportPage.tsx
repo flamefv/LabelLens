@@ -333,13 +333,23 @@ export const ProductReportPage: React.FC<ProductReportPageProps> = ({
                 </div>
               ))}
             </div>
+          ) : !product.ingredientsText && product.declaredAllergens.length === 0 ? (
+            <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 text-xs text-amber-950 flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold block">No Allergen Information Available</span>
+                <p className="text-[11px] text-amber-900 mt-0.5">
+                  This record lacks ingredient lists and package allergen declarations. An absence of listed allergens in an incomplete or analytical record cannot be interpreted as proof that the product is allergen-free or safe.
+                </p>
+              </div>
+            </div>
           ) : (
-            <div className="p-3.5 bg-emerald-50/60 rounded-2xl border border-emerald-200 text-xs text-emerald-950 flex items-start gap-2.5">
+            <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-xs text-stone-900 flex items-start gap-2.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold block">No Declared Major 9 Food Allergens Detected</span>
-                <p className="text-[11px] text-emerald-800 mt-0.5">
-                  Neither the ingredient list nor any &ldquo;Contains&rdquo; statement indicates the presence of milk, eggs, peanuts, tree nuts, wheat, soybeans, sesame, fish, or crustacean shellfish under FDA statutory rules.
+                <span className="font-bold block">No Declared Major 9 Food Allergens in Record</span>
+                <p className="text-[11px] text-stone-600 mt-0.5">
+                  Neither the ingredient list nor any &ldquo;Contains&rdquo; statement in this record indicates the presence of milk, eggs, peanuts, tree nuts, wheat, soybeans, sesame, fish, or crustacean shellfish under FDA statutory rules. Note: Absence of declared allergens does not guarantee absence of unlisted allergens or cross-contact.
                 </p>
               </div>
             </div>

@@ -483,6 +483,293 @@ test('resolveUnifiedProductRecord updates availability indicators and preview wh
   assert.ok(initialItem.ingredientPreview?.length, 'Must populate ingredientPreview upon resolving');
 });
 
+test('allergen availability accurately distinguishes declared, explicitly empty, and unavailable records without assuming safety', async () => {
+  const { normalizeOffSearchResult, normalizeUsdaFoodItem } = await import('../services/unifiedSearch.ts');
+  const { evaluateDietaryRule, DEFAULT_DIETARY_RULES } = await import('../services/dietaryEngine.ts');
+
+  // 1. Record with explicitly declared allergens
+  const declaredItem = normalizeOffSearchResult({
+    code: '1111111111',
+    name: 'Almond Granola',
+    allergensTags: ['en:almonds'],
+    ingredientsText: 'Oats, almonds, honey.',
+    sourceType: 'open_food_facts' as const
+  });
+  assert.equal(declaredItem.availableData.hasAllergens, true, 'Must mark declared allergens as true');
+  assert.equal(declaredItem.availableData.allergenStatus, 'declared');
+
+  // 2. Record with empty allergen field (field exists in record, but has no allergens declared)
+  const emptyAllergenItem = normalizeOffSearchResult({
+    code: '2222222222',
+    name: 'Rolled Oats',
+    allergens: '',
+    allergensTags: [],
+    ingredientsText: '100% Whole Grain Rolled Oats.',
+    sourceType: 'open_food_facts' as const
+  });
+  assert.equal(emptyAllergenItem.availableData.hasAllergens, 'none_declared', 'Must distinguish "none declared" from missing data');
+  assert.equal(emptyAllergenItem.availableData.allergenStatus, 'none_declared');
+  assert.notEqual(emptyAllergenItem.availableData.hasAllergens, false, 'Must not equate "none declared" to absent field');
+
+  // 3. Record where allergen info is unavailable (undefined in database)
+  const missingAllergenItem = normalizeOffSearchResult({
+    code: '3333333333',
+    name: 'Unverified Snack',
+    sourceType: 'open_food_facts' as const
+  });
+  assert.equal(missingAllergenItem.availableData.hasAllergens, 'unverified', 'Must mark missing allergen data as unverified');
+  assert.equal(missingAllergenItem.availableData.allergenStatus, 'unverified');
+
+  // 4. USDA analytical food item: does not have commercial package allergen declarations
+  const usdaAnalytical = normalizeUsdaFoodItem({
+    fdcId: 999999,
+    description: 'Analytical Oat Flour Baseline',
+    dataType: 'Foundation Food',
+    foodNutrients: [
+      { nutrientId: 1003, nutrientName: 'Protein', nutrientNumber: '203', unitName: 'g', value: 13.5 }
+    ]
+  });
+  assert.equal(usdaAnalytical.availableData.hasAllergens, 'unverified', 'USDA analytical item must be unverified for allergens');
+  assert.equal(usdaAnalytical.availableData.allergenStatus, 'unverified');
+
+  // 5. Safety confirmation: missing information is never treated as proof of safety or absence of allergens
+  const milkRule = DEFAULT_DIETARY_RULES.find((r) => r.id === 'allergen-milk')!;
+  const unverifiedRecord: ProductRecord = {
+    id: 'unverified-product',
+    name: 'Incomplete Database Record',
+    sourceType: 'open_food_facts',
+    dataCompleteness: 'Minimal',
+    ingredientsText: '',
+    ingredientsList: [],
+    declaredAllergens: [],
+    precautionaryStatements: [],
+    sources: [],
+    limitations: ['No ingredients or allergen declarations found']
+  };
+  const evalResult = evaluateDietaryRule(milkRule, unverifiedRecord);
+  assert.equal(evalResult.matchLevel, 'INSUFFICIENT_INFO', 'Must return INSUFFICIENT_INFO, never NO_MATCH_FOUND or safe');
+  assert.ok(evalResult.explanation.toLowerCase().includes('cannot be verified'), 'Explanation must state status cannot be verified');
+});
+
+test('source filtering strictly isolates Open Food Facts, USDA FoodData Central, and All Sources without data corruption', async () => {
+  const { normalizeOffSearchResult, normalizeUsdaFoodItem, normalizeCatalogItem } = await import('../services/unifiedSearch.ts');
+  const { FOOD_CATALOG } = await import('../data/foodCatalog.ts');
+  const { USDA_STANDARD_BENCHMARKS } = await import('../services/usdaFoodData.ts');
+
+  const offItem = normalizeOffSearchResult({
+    code: '016000275287',
+    name: 'Open Food Facts Cheerios',
+    sourceType: 'open_food_facts' as const
+  });
+  const usdaItem = normalizeUsdaFoodItem(USDA_STANDARD_BENCHMARKS.cheerios);
+  const catalogItem = normalizeCatalogItem(FOOD_CATALOG[0]);
+
+  const allItems = [offItem, usdaItem, catalogItem];
+
+  // Helper simulating visibleSuggestions filter in ProductSearchInputWithCamera
+  const filterSuggestions = (items: typeof allItems, activeFilter: 'all' | 'open_food_facts' | 'usda_fdc') => {
+    if (activeFilter === 'open_food_facts') {
+      return items.filter((item) => item.source === 'open_food_facts');
+    }
+    if (activeFilter === 'usda_fdc') {
+      return items.filter((item) => item.source === 'usda_fdc');
+    }
+    return items;
+  };
+
+  // 1. Open Food Facts filter
+  const offFiltered = filterSuggestions(allItems, 'open_food_facts');
+  assert.equal(offFiltered.length, 1, 'Open Food Facts filter must only return 1 item');
+  assert.equal(offFiltered[0].source, 'open_food_facts', 'Must strictly be open_food_facts');
+  assert.notEqual(offFiltered[0].source, 'catalog', 'Must NOT include catalog items');
+
+  // 2. USDA filter
+  const usdaFiltered = filterSuggestions(allItems, 'usda_fdc');
+  assert.equal(usdaFiltered.length, 1, 'USDA filter must only return 1 item');
+  assert.equal(usdaFiltered[0].source, 'usda_fdc');
+
+  // 3. All Sources filter
+  const allFiltered = filterSuggestions(allItems, 'all');
+  assert.equal(allFiltered.length, 3, 'All Sources must return all 3 items');
+
+  // 4. Verify original array was not mutated or corrupted
+  assert.equal(allItems.length, 3, 'Original list must retain all elements');
+  assert.equal(allItems[0].id, offItem.id);
+  assert.equal(allItems[1].id, usdaItem.id);
+  assert.equal(allItems[2].id, catalogItem.id);
+});
+
+test('barcode search handles formatted input, catalog matches, remote lookups, network failures, and never queries USDA', async () => {
+  const { searchUnified } = await import('../services/unifiedSearch.ts');
+
+  const originalFetch = globalThis.fetch;
+
+  // 1. Formatted barcode with spaces and dashes matching local catalog
+  const formattedBarcode = ' 0-16000-27528-7 ';
+  const catalogRes = await searchUnified(formattedBarcode, 'All');
+  assert.equal(catalogRes.isBarcodeMatch, true);
+  assert.equal(catalogRes.sourceCounts.usdaFoodData, 0, 'USDA must never be queried with barcodes');
+  assert.ok(catalogRes.results.length > 0);
+  assert.ok(catalogRes.results.some((r) => r.barcode === '016000275287'));
+
+  // 2. Barcode not found in any database
+  const notFoundRes = await searchUnified('98765432109876', 'All');
+  assert.equal(notFoundRes.isBarcodeMatch, true);
+  assert.equal(notFoundRes.results.length, 0, 'Must not return placeholder for non-existent barcode');
+  assert.equal(notFoundRes.totalResults, 0);
+  assert.equal(notFoundRes.sourceCounts.usdaFoodData, 0);
+
+  // 3. Successful Open Food Facts barcode lookup with mocked fetch
+  const testBarcode = '737628064502';
+  try {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      if (urlStr.includes(testBarcode)) {
+        return new Response(
+          JSON.stringify({
+            status: 1,
+            code: testBarcode,
+            product: {
+              product_name: 'Mock Organic Jasmine Rice',
+              brands: 'Thai Kitchen',
+              ingredients_text: 'Jasmine rice',
+              allergens_tags: [],
+              image_url: 'https://images.openfoodfacts.org/rice.jpg',
+              nutriments: { 'energy-kcal_100g': 160 }
+            }
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response('Not found', { status: 404 });
+    };
+
+    const offRes = await searchUnified(testBarcode, 'All');
+    assert.equal(offRes.isBarcodeMatch, true);
+    assert.equal(offRes.sourceCounts.usdaFoodData, 0, 'USDA must not be queried');
+    assert.ok(offRes.results.length > 0, 'Must return Open Food Facts match');
+    const matchedOff = offRes.results.find((r) => r.source === 'open_food_facts');
+    assert.ok(matchedOff, 'Must have source open_food_facts');
+    assert.equal(matchedOff?.name, 'Mock Organic Jasmine Rice');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // 4. Network failure during barcode lookup
+  const failBarcode = '888888888888';
+  try {
+    globalThis.fetch = async () => {
+      throw new Error('Connection refused by Open Food Facts');
+    };
+
+    const failRes = await searchUnified(failBarcode, 'All');
+    assert.equal(failRes.isBarcodeMatch, true);
+    assert.equal(failRes.results.length, 0);
+    assert.equal(failRes.sourceCounts.usdaFoodData, 0);
+    // Does not crash and safely returns empty results
+    assert.equal(failRes.displayedCount, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('unified search failure modes: handles partial and complete network failures with honest counts', async () => {
+  const { searchUnified } = await import('../services/unifiedSearch.ts');
+
+  const originalFetch = globalThis.fetch;
+
+  // Case A: Open Food Facts fails/times out, but USDA succeeds
+  try {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      if (urlStr.includes('openfoodfacts.org')) {
+        throw new Error('OFF server timeout');
+      }
+      if (urlStr.includes('nal.usda.gov')) {
+        return new Response(
+          JSON.stringify({
+            foods: [
+              {
+                fdcId: 888123,
+                description: 'Mock USDA Reference Oats',
+                dataType: 'SR Legacy',
+                foodNutrients: [{ nutrientName: 'Energy', value: 389, unitName: 'kcal' }]
+              }
+            ]
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response('{}', { status: 200 });
+    };
+
+    const res = await searchUnified('referenceoatstest', 'All', 20);
+    // Must NOT crash; handles partial failure gracefully
+    assert.equal(res.partialFailures.openFoodFacts, true, 'Must flag Open Food Facts partial failure');
+    assert.equal(res.partialFailures.usdaFoodData, undefined, 'USDA must not be flagged failed');
+    assert.ok(res.results.length > 0, 'Must still return available USDA and catalog results');
+    assert.equal(res.displayedCount, res.results.length, 'displayedCount must equal results length');
+    assert.equal(res.totalResults, res.results.length, 'totalResults must equal loaded results length');
+    assert.equal(res.sourceCounts.openFoodFacts, 0, 'Open Food Facts count must be 0');
+    assert.ok(res.sourceCounts.usdaFoodData > 0, 'USDA count must reflect loaded items');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // Case B: USDA fails/times out, but Open Food Facts succeeds
+  try {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      if (urlStr.includes('nal.usda.gov')) {
+        throw new Error('USDA API gateway 504 timeout');
+      }
+      if (urlStr.includes('openfoodfacts.org')) {
+        return new Response(
+          JSON.stringify({
+            count: 1,
+            products: [
+              {
+                code: '777000111222',
+                product_name: 'Mock Open Food Facts Granola Bar',
+                brands: 'Nature Mock',
+                nutriments: { 'energy-kcal_100g': 400 }
+              }
+            ]
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response('{}', { status: 200 });
+    };
+
+    const res = await searchUnified('granolabartest', 'All', 20);
+    assert.equal(res.partialFailures.usdaFoodData, true, 'Must flag USDA partial failure');
+    assert.ok(res.results.length > 0, 'Must still return Open Food Facts items');
+    assert.equal(res.displayedCount, res.results.length);
+    assert.equal(res.totalResults, res.results.length);
+    assert.ok(res.sourceCounts.openFoodFacts > 0, 'Must count loaded Open Food Facts results');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // Case C: Both remote sources fail simultaneously
+  try {
+    globalThis.fetch = async () => {
+      throw new Error('Device is offline');
+    };
+
+    const res = await searchUnified('completelyofflinetestfood', 'All', 20);
+    // Does not throw; returns partial failure flags
+    assert.equal(res.partialFailures.openFoodFacts, true);
+    assert.equal(res.partialFailures.usdaFoodData, true);
+    assert.equal(res.displayedCount, res.results.length);
+    assert.equal(res.totalResults, res.results.length);
+    assert.equal(res.sourceCounts.openFoodFacts, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 
 
 

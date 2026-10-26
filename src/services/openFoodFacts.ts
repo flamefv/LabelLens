@@ -354,6 +354,8 @@ export async function searchOpenFoodFactsPaged(
     return { products: [], totalCount: 0, page: 1, pageSize };
   }
 
+  let lastError: unknown = null;
+
   for (const host of OFF_HOSTS) {
     const url = `${host}/cgi/search.pl?search_terms=${encodeURIComponent(trimmed)}&search_simple=1&action=process&json=1&page_size=${pageSize}&page=${page}`;
 
@@ -432,7 +434,8 @@ export async function searchOpenFoodFactsPaged(
         page,
         pageSize
       };
-    } catch {
+    } catch (err) {
+      lastError = err;
       continue;
     }
   }
@@ -475,8 +478,12 @@ export async function searchOpenFoodFactsPaged(
         pageSize
       };
     }
-  } catch {
-    // Elasticsearch fallback also failed
+  } catch (err) {
+    lastError = err;
+  }
+
+  if (lastError) {
+    throw lastError;
   }
 
   return { products: [], totalCount: 0, page, pageSize };

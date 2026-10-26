@@ -335,7 +335,15 @@ export const ComparePage: React.FC<ComparePageProps> = ({
             <span className="font-bold text-stone-900 block">{productA.name}</span>
             <p className="text-stone-600">
               <strong className="text-stone-800">Declared:</strong>{' '}
-              {productA.declaredAllergens.length > 0 ? productA.declaredAllergens.join(', ') : 'None listed'}
+              {productA.declaredAllergens.length > 0 ? (
+                <span className="text-amber-900 font-semibold">{productA.declaredAllergens.join(', ')}</span>
+              ) : productA.sourceType === 'usda_fdc' ? (
+                <span className="text-stone-500 italic">No allergen information available (USDA analytical baseline)</span>
+              ) : !productA.ingredientsText && productA.declaredAllergens.length === 0 ? (
+                <span className="text-stone-500 italic">No allergen information available</span>
+              ) : (
+                <span className="text-stone-600">No allergens declared in this record <span className="text-[10px] text-stone-400">(not verified allergen-free)</span></span>
+              )}
             </p>
           </div>
 
@@ -343,7 +351,15 @@ export const ComparePage: React.FC<ComparePageProps> = ({
             <span className="font-bold text-stone-900 block">{productB.name}</span>
             <p className="text-stone-600">
               <strong className="text-stone-800">Declared:</strong>{' '}
-              {productB.declaredAllergens.length > 0 ? productB.declaredAllergens.join(', ') : 'None listed'}
+              {productB.declaredAllergens.length > 0 ? (
+                <span className="text-amber-900 font-semibold">{productB.declaredAllergens.join(', ')}</span>
+              ) : productB.sourceType === 'usda_fdc' ? (
+                <span className="text-stone-500 italic">No allergen information available (USDA analytical baseline)</span>
+              ) : !productB.ingredientsText && productB.declaredAllergens.length === 0 ? (
+                <span className="text-stone-500 italic">No allergen information available</span>
+              ) : (
+                <span className="text-stone-600">No allergens declared in this record <span className="text-[10px] text-stone-400">(not verified allergen-free)</span></span>
+              )}
             </p>
           </div>
         </div>

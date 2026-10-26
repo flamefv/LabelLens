@@ -35,6 +35,7 @@ export type SearchItemSource =
   | 'direct_barcode';
 
 export type DataAvailabilityStatus = boolean | 'unverified';
+export type AllergenAvailabilityStatus = 'declared' | 'none_declared' | 'unverified';
 
 export interface UnifiedSearchResultItem {
   id: string; // e.g. "off-016000275287" or "usda-171689"
@@ -55,7 +56,8 @@ export interface UnifiedSearchResultItem {
   availableData: {
     hasIngredients: DataAvailabilityStatus;
     hasNutrition: DataAvailabilityStatus;
-    hasAllergens: DataAvailabilityStatus;
+    hasAllergens: boolean | 'unverified' | 'none_declared';
+    allergenStatus: AllergenAvailabilityStatus;
     hasImage: boolean;
   };
   rawOffItem?: OffSearchResultItem;
@@ -109,7 +111,24 @@ export function updateItemWithResolvedProduct(
     record.nutritionFacts &&
     (record.nutritionFacts.calories !== undefined || record.nutritionFacts.protein !== undefined)
   );
-  const hasAllergens = record.declaredAllergens.length > 0;
+
+  let hasAllergens: boolean | 'unverified' | 'none_declared' = 'unverified';
+  let allergenStatus: AllergenAvailabilityStatus = 'unverified';
+
+  if (record.declaredAllergens && record.declaredAllergens.length > 0) {
+    hasAllergens = true;
+    allergenStatus = 'declared';
+  } else if (record.sourceType === 'usda_fdc') {
+    hasAllergens = 'unverified';
+    allergenStatus = 'unverified';
+  } else if (record.ingredientsText && record.ingredientsText.trim().length > 0) {
+    hasAllergens = 'none_declared';
+    allergenStatus = 'none_declared';
+  } else {
+    hasAllergens = 'unverified';
+    allergenStatus = 'unverified';
+  }
+
   const hasImage = Boolean(
     record.imageUrl &&
     record.imageUrl.trim().length > 0 &&
@@ -120,6 +139,7 @@ export function updateItemWithResolvedProduct(
     hasIngredients,
     hasNutrition,
     hasAllergens,
+    allergenStatus,
     hasImage
   };
 
@@ -144,6 +164,7 @@ export function updateItemWithResolvedProduct(
 /**
  * Normalizes Open Food Facts search result into common format without discarding source-specific data.
  * Accurately represents data availability without inferring ingredient or allergen presence from unrelated fields.
+ * Distinguishes between explicitly declared allergens, no allergens declared in record, and missing/unverified allergen info.
  */
 export function normalizeOffSearchResult(item: OffSearchResultItem): UnifiedSearchResultItem {
   // Only declare ingredients available if actual ingredient text is present
@@ -162,14 +183,30 @@ export function normalizeOffSearchResult(item: OffSearchResultItem): UnifiedSear
       ? false
       : 'unverified';
 
-  // Only declare allergens available if actual allergen declarations or tags exist
-  const hasAllergens: DataAvailabilityStatus =
-    item.allergensTags !== undefined || item.allergens !== undefined
-      ? Boolean(
-          (item.allergensTags && item.allergensTags.length > 0) ||
-          (item.allergens && item.allergens.trim().length > 0)
-        )
-      : 'unverified';
+  // Allergen availability:
+  // Distinguish between declared allergens, no allergens declared in record, and unverified/missing
+  let hasAllergens: boolean | 'unverified' | 'none_declared' = 'unverified';
+  let allergenStatus: AllergenAvailabilityStatus = 'unverified';
+
+  const hasExplicitAllergenData =
+    item.allergensTags !== undefined || item.allergens !== undefined;
+
+  if (hasExplicitAllergenData) {
+    const hasDeclared = Boolean(
+      (item.allergensTags && item.allergensTags.length > 0) ||
+      (item.allergens && item.allergens.trim().length > 0)
+    );
+    if (hasDeclared) {
+      hasAllergens = true;
+      allergenStatus = 'declared';
+    } else {
+      hasAllergens = 'none_declared';
+      allergenStatus = 'none_declared';
+    }
+  } else {
+    hasAllergens = 'unverified';
+    allergenStatus = 'unverified';
+  }
 
   const hasImage = Boolean(
     item.imageUrl &&
@@ -202,6 +239,7 @@ export function normalizeOffSearchResult(item: OffSearchResultItem): UnifiedSear
       hasIngredients,
       hasNutrition,
       hasAllergens,
+      allergenStatus,
       hasImage
     },
     rawOffItem: item
@@ -210,6 +248,7 @@ export function normalizeOffSearchResult(item: OffSearchResultItem): UnifiedSear
 
 /**
  * Normalizes USDA FoodData Central item into common format without discarding source-specific data.
+ * Sets allergen status to unverified because USDA analytical profiles do not record commercial package allergen declarations.
  */
 export function normalizeUsdaFoodItem(food: UsdaFoodItem): UnifiedSearchResultItem {
   const nutrition = usdaItemToNutrition(food);
@@ -237,7 +276,8 @@ export function normalizeUsdaFoodItem(food: UsdaFoodItem): UnifiedSearchResultIt
     availableData: {
       hasIngredients,
       hasNutrition,
-      hasAllergens: false, // USDA analytical records do not carry commercial allergen declarations
+      hasAllergens: 'unverified', // USDA analytical records do not carry commercial allergen declarations
+      allergenStatus: 'unverified',
       hasImage: false
     },
     rawUsdaItem: food
@@ -248,6 +288,11 @@ export function normalizeUsdaFoodItem(food: UsdaFoodItem): UnifiedSearchResultIt
  * Normalizes local catalog item into common format.
  */
 export function normalizeCatalogItem(item: CatalogItem): UnifiedSearchResultItem {
+  const hasAllergens: boolean | 'unverified' | 'none_declared' =
+    item.declaredAllergens && item.declaredAllergens.length > 0
+      ? true
+      : 'none_declared';
+
   return {
     id: `cat-${item.id}`,
     source: 'catalog',
@@ -267,7 +312,8 @@ export function normalizeCatalogItem(item: CatalogItem): UnifiedSearchResultItem
     availableData: {
       hasIngredients: Boolean(item.ingredientsText && item.ingredientsText.trim().length > 0),
       hasNutrition: item.calories !== undefined,
-      hasAllergens: (item.declaredAllergens?.length || 0) > 0,
+      hasAllergens,
+      allergenStatus: hasAllergens === true ? 'declared' : 'none_declared',
       hasImage: false
     },
     catalogItem: item
@@ -278,6 +324,11 @@ export function normalizeCatalogItem(item: CatalogItem): UnifiedSearchResultItem
  * Normalizes sample demo scenario into common format.
  */
 export function normalizeScenarioItem(scenario: ProductRecord): UnifiedSearchResultItem {
+  const hasAllergens: boolean | 'unverified' | 'none_declared' =
+    scenario.declaredAllergens && scenario.declaredAllergens.length > 0
+      ? true
+      : 'none_declared';
+
   return {
     id: `scenario-${scenario.id}`,
     source: 'scenario',
@@ -299,7 +350,8 @@ export function normalizeScenarioItem(scenario: ProductRecord): UnifiedSearchRes
         scenario.nutritionFacts &&
         (scenario.nutritionFacts.calories !== undefined || scenario.nutritionFacts.protein !== undefined)
       ),
-      hasAllergens: scenario.declaredAllergens.length > 0,
+      hasAllergens,
+      allergenStatus: hasAllergens === true ? 'declared' : 'none_declared',
       hasImage: Boolean(scenario.imageUrl && scenario.imageUrl.trim().length > 0)
     },
     localProduct: scenario
@@ -387,7 +439,18 @@ export async function searchUnified(
         offRecord.nutritionFacts &&
         (offRecord.nutritionFacts.calories !== undefined || offRecord.nutritionFacts.protein !== undefined)
       );
-      const hasAllergens = offRecord.declaredAllergens.length > 0;
+      const hasAllergens: boolean | 'unverified' | 'none_declared' =
+        offRecord.declaredAllergens.length > 0
+          ? true
+          : offRecord.ingredientsText
+          ? 'none_declared'
+          : 'unverified';
+      const allergenStatus: AllergenAvailabilityStatus =
+        offRecord.declaredAllergens.length > 0
+          ? 'declared'
+          : offRecord.ingredientsText
+          ? 'none_declared'
+          : 'unverified';
       const hasImage = Boolean(
         offRecord.imageUrl &&
         offRecord.imageUrl.trim().length > 0 &&
@@ -413,6 +476,7 @@ export async function searchUnified(
           hasIngredients,
           hasNutrition,
           hasAllergens,
+          allergenStatus,
           hasImage
         },
         localProduct: offRecord
@@ -533,12 +597,17 @@ export async function searchUnified(
   response.displayedCount = allItems.length;
   response.totalResults = allItems.length;
 
+  const actualOffCount = allItems.filter((i) => i.source === 'open_food_facts').length;
+  const actualUsdaCount = allItems.filter((i) => i.source === 'usda_fdc').length;
+  const actualCatalogCount = allItems.filter((i) => i.source === 'catalog').length;
+  const actualScenarioCount = allItems.filter((i) => i.source === 'scenario').length;
+
   response.sourceCounts = {
-    openFoodFacts: offResults.length,
+    openFoodFacts: actualOffCount,
     openFoodFactsReportedTotal: offReportedTotal,
-    usdaFoodData: usdaResults.length,
-    catalog: localCatalogMatches.length,
-    scenarios: scenarioMatches.length
+    usdaFoodData: actualUsdaCount,
+    catalog: actualCatalogCount,
+    scenarios: actualScenarioCount
   };
 
   return response;

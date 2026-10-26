@@ -220,7 +220,7 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
     const isNumeric = /^\d{4,16}$/.test(cleanDigits);
 
     if (activeSourceFilter === 'open_food_facts') {
-      return items.filter((item) => item.source === 'open_food_facts' || item.source === 'catalog');
+      return items.filter((item) => item.source === 'open_food_facts');
     }
     if (activeSourceFilter === 'usda_fdc') {
       return items.filter((item) => item.source === 'usda_fdc');
@@ -509,7 +509,7 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
                 <span>Unified Food Search</span>
                 {visibleSuggestions.length > 0 && query.trim().length >= 2 && (
                   <span className="text-[11px] font-normal text-stone-500">
-                    ({visibleSuggestions.length} results shown: {sourceCounts.openFoodFacts} Open Food Facts, {sourceCounts.usdaFoodData} USDA Central)
+                    ({visibleSuggestions.length} loaded{activeSourceFilter === 'all' ? `: ${sourceCounts.openFoodFacts} Open Food Facts, ${sourceCounts.usdaFoodData} USDA Central` : ''})
                   </span>
                 )}
               </span>
@@ -529,18 +529,24 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
               </span>
               <button
                 type="button"
-                onClick={() => setActiveSourceFilter('all')}
+                onClick={() => {
+                  setActiveSourceFilter('all');
+                  setHighlightedIndex(-1);
+                }}
                 className={`px-2 py-0.5 rounded-md font-semibold transition-colors shrink-0 ${
                   activeSourceFilter === 'all'
                     ? 'bg-stone-800 text-white shadow-2xs'
                     : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
                 }`}
               >
-                All Sources ({visibleSuggestions.length} shown)
+                All Sources
               </button>
               <button
                 type="button"
-                onClick={() => setActiveSourceFilter('open_food_facts')}
+                onClick={() => {
+                  setActiveSourceFilter('open_food_facts');
+                  setHighlightedIndex(-1);
+                }}
                 className={`px-2 py-0.5 rounded-md font-semibold transition-colors shrink-0 flex items-center gap-1 ${
                   activeSourceFilter === 'open_food_facts'
                     ? 'bg-emerald-900 text-white shadow-2xs'
@@ -552,7 +558,10 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
               </button>
               <button
                 type="button"
-                onClick={() => setActiveSourceFilter('usda_fdc')}
+                onClick={() => {
+                  setActiveSourceFilter('usda_fdc');
+                  setHighlightedIndex(-1);
+                }}
                 className={`px-2 py-0.5 rounded-md font-semibold transition-colors shrink-0 flex items-center gap-1 ${
                   activeSourceFilter === 'usda_fdc'
                     ? 'bg-blue-900 text-white shadow-2xs'
@@ -635,6 +644,15 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
                     <p className="font-semibold text-stone-800">No product found for barcode &quot;{cleanQueryDigits}&quot;</p>
                     <p className="text-[11px] text-stone-600 max-w-sm mx-auto">
                       No record was found in Open Food Facts or the catalog for this code. Verify the package digits, search by food name, or take a photo with the Camera.
+                    </p>
+                  </>
+                ) : activeSourceFilter !== 'all' ? (
+                  <>
+                    <p className="font-semibold text-stone-700">
+                      No {activeSourceFilter === 'open_food_facts' ? 'Open Food Facts' : 'USDA FoodData Central'} results for &quot;{query}&quot;
+                    </p>
+                    <p className="text-[11px] text-stone-500">
+                      Switch back to &ldquo;All Sources&rdquo; to view results from other databases.
                     </p>
                   </>
                 ) : (
@@ -734,7 +752,15 @@ export const ProductSearchInputWithCamera: React.FC<ProductSearchInputWithCamera
                             <span className="text-amber-800 font-medium text-[10px]">
                               &bull; Allergens declared
                             </span>
-                          ) : null}
+                          ) : item.availableData.hasAllergens === 'none_declared' ? (
+                            <span className="text-stone-500 text-[10px]">
+                              &bull; No allergens declared in record
+                            </span>
+                          ) : (
+                            <span className="text-stone-400 text-[10px]">
+                              &bull; Allergen data unverified
+                            </span>
+                          )}
 
                           {item.servingSize && (
                             <span className="text-stone-400 hidden sm:inline">
