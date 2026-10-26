@@ -253,6 +253,10 @@ export async function searchUsdaFoodData(query: string, apiKey?: string): Promis
  * Fetches specific food details by FDC ID.
  */
 export async function fetchUsdaFoodById(fdcId: number, apiKey?: string): Promise<UsdaFoodItem | null> {
+  // Check standard benchmarks first for instantaneous offline response
+  const benchmark = Object.values(USDA_STANDARD_BENCHMARKS).find((b) => b.fdcId === fdcId);
+  if (benchmark) return benchmark;
+
   const key = apiKey || 'DEMO_KEY';
   const url = `${USDA_BASE_URL}/food/${fdcId}?api_key=${key}`;
 

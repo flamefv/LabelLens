@@ -7,7 +7,7 @@ import React, { useState, useRef } from 'react';
 import { ProductRecord, LabelExtractionResult } from '../types/index.ts';
 import { performBrowserOcr, OcrProgress } from '../services/tesseractOcr.ts';
 import { parseLabelText } from '../services/labelParser.ts';
-import { fetchProductByBarcode, searchOpenFoodFacts } from '../services/openFoodFacts.ts';
+import { fetchUnifiedProductById } from '../services/unifiedSearch.ts';
 import { SampleScenarioBar } from '../components/SampleScenarioBar.tsx';
 import { DisclaimerBanner } from '../components/DisclaimerBanner.tsx';
 import { ProductSearchInputWithCamera } from '../components/ProductSearchInputWithCamera.tsx';
@@ -36,9 +36,6 @@ export const AnalyzePage: React.FC<AnalyzePageProps> = ({ onProductReady }) => {
 
   // Barcode state
   const [barcodeInput, setBarcodeInput] = useState('');
-  const [barcodeSearchQuery, setBarcodeSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{ code: string; name: string; brand?: string; imageUrl?: string }>>([]);
-  const [isSearchingOff, setIsSearchingOff] = useState(false);
 
   // Manual Paste state
   const [pasteName, setPasteName] = useState('');
@@ -77,7 +74,7 @@ export const AnalyzePage: React.FC<AnalyzePageProps> = ({ onProductReady }) => {
     setErrorMessage(null);
 
     try {
-      const product = await fetchProductByBarcode(code);
+      const product = await fetchUnifiedProductById(code);
       if (!product) {
         setErrorMessage(
           `No matching product found in the database for barcode "${code}". You can take a photo of the label or type the ingredients manually.`
@@ -89,24 +86,6 @@ export const AnalyzePage: React.FC<AnalyzePageProps> = ({ onProductReady }) => {
       setErrorMessage(err instanceof Error ? err.message : 'Could not reach product database.');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  // Search OFF by product name
-  const handleSearchOff = async () => {
-    if (!barcodeSearchQuery.trim()) return;
-    setIsSearchingOff(true);
-    setErrorMessage(null);
-    try {
-      const results = await searchOpenFoodFacts(barcodeSearchQuery);
-      setSearchResults(results);
-      if (results.length === 0) {
-        setErrorMessage(`No products found matching "${barcodeSearchQuery}". Try scanning the barcode or photo instead.`);
-      }
-    } catch {
-      setErrorMessage('Search request failed. Please check your internet connection.');
-    } finally {
-      setIsSearchingOff(false);
     }
   };
 

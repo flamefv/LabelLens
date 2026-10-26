@@ -5,8 +5,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { ProductRecord } from './types/index.ts';
-import { SAMPLE_SCENARIOS, getSampleScenario } from './data/sampleScenarios.ts';
+import { SAMPLE_SCENARIOS } from './data/sampleScenarios.ts';
 import { fetchProductByBarcode } from './services/openFoodFacts.ts';
+import { fetchUnifiedProductById } from './services/unifiedSearch.ts';
 import { useSavedProducts } from './hooks/useStorage.ts';
 import { Navbar } from './components/Navbar.tsx';
 import { LandingPage } from './pages/LandingPage.tsx';
@@ -35,13 +36,9 @@ export default function App() {
 
       if (path.startsWith('/product/')) {
         const id = path.replace('/product/', '').trim();
-        const demo = getSampleScenario(id);
-        if (demo) {
-          setActiveProduct(demo);
-          setCurrentTab('product');
-        } else if (id) {
+        if (id) {
           try {
-            const fetched = await fetchProductByBarcode(id);
+            const fetched = await fetchUnifiedProductById(id);
             if (fetched) {
               setActiveProduct(fetched);
               setCurrentTab('product');

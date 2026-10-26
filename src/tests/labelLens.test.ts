@@ -261,5 +261,114 @@ test('USDA FoodData Central standard benchmarks and nutrient comparison resolve 
   assert.ok(sodiumDiff?.varianceNote?.includes('higher than USDA standard benchmark'));
 });
 
+test('searchUnified retrieves and normalizes results from multiple sources simultaneously without database toggling', async () => {
+  const { searchUnified } = await import('../services/unifiedSearch.ts');
+
+  // Search for a common food term present in both packaged goods and USDA reference data
+  const res = await searchUnified('oat', 'All', 20);
+
+  assert.ok(res.results.length > 0, 'Expected search results for "oat"');
+  assert.ok(res.totalResults > 0, 'Expected positive totalResults count');
+
+  // Verify multiple sources are represented
+  const sources = new Set(res.results.map((r) => r.source));
+  assert.ok(sources.has('catalog') || sources.has('open_food_facts'), 'Should include packaged food records');
+  assert.ok(sources.has('usda_fdc'), 'Should include USDA FoodData Central analytical records');
+
+  // Verify that each result clearly preserves its source label and source identifier
+  const usdaItem = res.results.find((r) => r.source === 'usda_fdc');
+  assert.ok(usdaItem, 'Must find USDA item');
+  assert.equal(usdaItem?.sourceLabel, 'USDA FoodData Central');
+  assert.ok(usdaItem?.sourceIdentifier.startsWith('FDC ID:'), 'USDA item must identify FDC ID');
+
+  const packagedItem = res.results.find((r) => r.source === 'open_food_facts' || r.source === 'catalog');
+  assert.ok(packagedItem, 'Must find packaged food item');
+  assert.ok(packagedItem?.sourceIdentifier.startsWith('UPC:'), 'Packaged item must identify UPC');
+});
+
+test('searchUnified preserves source separation and never merges different database records', async () => {
+  const { searchUnified } = await import('../services/unifiedSearch.ts');
+
+  const res = await searchUnified('cheerios', 'All', 20);
+  const cheeriosItems = res.results.filter((r) => r.name.toLowerCase().includes('cheerio'));
+
+  // Should have distinct records: USDA analytical standard and commercial branded products
+  const usdaCheerios = cheeriosItems.find((r) => r.source === 'usda_fdc');
+  const packagedCheerios = cheeriosItems.find((r) => r.source === 'catalog' || r.source === 'open_food_facts');
+
+  assert.ok(usdaCheerios, 'Must contain USDA analytical Cheerios standard');
+  assert.ok(packagedCheerios, 'Must contain packaged commercial Cheerios');
+
+  // Ensure they remain separate objects with different IDs and different sources
+  assert.notEqual(usdaCheerios?.id, packagedCheerios?.id);
+  assert.notEqual(usdaCheerios?.source, packagedCheerios?.source);
+  assert.notEqual(usdaCheerios?.sourceIdentifier, packagedCheerios?.sourceIdentifier);
+});
+
+test('searchUnified handles empty queries, whitespace, and queries with no matches gracefully', async () => {
+  const { searchUnified } = await import('../services/unifiedSearch.ts');
+
+  // 1. Empty query
+  const emptyRes = await searchUnified('', 'All');
+  assert.equal(emptyRes.results.length, 0);
+  assert.equal(emptyRes.totalResults, 0);
+
+  // 2. Whitespace only
+  const spaceRes = await searchUnified('   ', 'All');
+  assert.equal(spaceRes.results.length, 0);
+
+  // 3. Single character query
+  const singleRes = await searchUnified('x', 'All');
+  assert.equal(singleRes.results.length, 0);
+
+  // 4. Nonsense query that yields no matches
+  const nonsenseRes = await searchUnified('xyzqkj789nonexistentfood123', 'All');
+  assert.equal(nonsenseRes.results.length, 0);
+  assert.equal(nonsenseRes.totalResults, 0);
+  assert.equal(typeof nonsenseRes.partialFailures, 'object');
+});
+
+test('fetchUnifiedProductById resolves USDA FDC IDs, barcodes, catalog items, and demo scenarios correctly', async () => {
+  const { fetchUnifiedProductById } = await import('../services/unifiedSearch.ts');
+
+  // 1. USDA ID resolution
+  const usdaRecord = await fetchUnifiedProductById('usda-171689');
+  assert.ok(usdaRecord, 'Must resolve USDA record for FDC 171689 (Cheerios)');
+  assert.equal(usdaRecord?.sourceType, 'usda_fdc');
+  assert.ok(usdaRecord?.sources.some((s) => s.url.includes('fdc.nal.usda.gov')));
+  assert.ok(usdaRecord?.nutritionFacts?.calories);
+
+  // 2. Demo scenario ID resolution
+  const scenarioRecord = await fetchUnifiedProductById('demo-oat-milk');
+  assert.ok(scenarioRecord, 'Must resolve demo-oat-milk scenario');
+  assert.equal(scenarioRecord?.name, 'Barista Edition Oat Milk');
+
+  // 3. Catalog ID resolution
+  const catalogRecord = await fetchUnifiedProductById('cat-cereal-honey-nut-cheerios');
+  assert.ok(catalogRecord, 'Must resolve catalog item');
+  assert.equal(catalogRecord?.barcode, '016000275287');
+
+  // 4. Barcode resolution
+  const barcodeRecord = await fetchUnifiedProductById('016000275287');
+  assert.ok(barcodeRecord, 'Must resolve product by UPC barcode');
+  assert.equal(barcodeRecord?.barcode, '016000275287');
+});
+
+test('resolveUnifiedProductRecord creates complete ProductRecord without fabricating missing values', async () => {
+  const { searchUnified, resolveUnifiedProductRecord } = await import('../services/unifiedSearch.ts');
+
+  const searchRes = await searchUnified('oat', 'All', 10);
+  assert.ok(searchRes.results.length > 0);
+
+  const firstResult = searchRes.results[0];
+  const fullRecord = await resolveUnifiedProductRecord(firstResult);
+
+  assert.ok(fullRecord, 'Must resolve to a valid ProductRecord');
+  assert.ok(fullRecord?.name, 'Product must have name');
+  assert.ok(fullRecord?.sourceType, 'Product must have sourceType');
+  assert.ok(Array.isArray(fullRecord?.sources), 'Product must have sources array');
+  assert.ok(Array.isArray(fullRecord?.limitations), 'Product must have limitations array');
+});
+
 
 

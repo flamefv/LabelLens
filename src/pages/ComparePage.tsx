@@ -78,15 +78,23 @@ export const ComparePage: React.FC<ComparePageProps> = ({
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-950">
               Food A
             </span>
-            <ProvenanceBadge
-              provenance={
-                productA.sourceType === 'package_scan'
-                  ? 'Read from package'
-                  : productA.sourceType === 'open_food_facts'
-                  ? 'Database record'
-                  : 'Official guidance'
-              }
-            />
+            {productA.sourceType === 'usda_fdc' ? (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-200 flex items-center gap-1">
+                <Scale className="w-3 h-3 text-blue-800" /> USDA FoodData Central
+              </span>
+            ) : productA.sourceType === 'open_food_facts' ? (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-900 border border-emerald-200">
+                Open Food Facts
+              </span>
+            ) : (
+              <ProvenanceBadge
+                provenance={
+                  productA.sourceType === 'package_scan'
+                    ? 'Read from package'
+                    : 'Official guidance'
+                }
+              />
+            )}
           </div>
 
           <div>
@@ -128,15 +136,23 @@ export const ComparePage: React.FC<ComparePageProps> = ({
             <span className="text-xs font-bold uppercase tracking-wider text-blue-950">
               Food B
             </span>
-            <ProvenanceBadge
-              provenance={
-                productB.sourceType === 'package_scan'
-                  ? 'Read from package'
-                  : productB.sourceType === 'open_food_facts'
-                  ? 'Database record'
-                  : 'Official guidance'
-              }
-            />
+            {productB.sourceType === 'usda_fdc' ? (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-200 flex items-center gap-1">
+                <Scale className="w-3 h-3 text-blue-800" /> USDA FoodData Central
+              </span>
+            ) : productB.sourceType === 'open_food_facts' ? (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-900 border border-emerald-200">
+                Open Food Facts
+              </span>
+            ) : (
+              <ProvenanceBadge
+                provenance={
+                  productB.sourceType === 'package_scan'
+                    ? 'Read from package'
+                    : 'Official guidance'
+                }
+              />
+            )}
           </div>
 
           <div>

@@ -127,6 +127,16 @@ export function compareProducts(
       `Serving sizes differ: ${productA.name} states "${productA.servingSize}" whereas ${productB.name} states "${productB.servingSize}". Compare 100g metrics for true baseline equivalence.`
     );
   }
+  if (!productA.nutritionFacts?.per100g && productA.nutritionFacts) {
+    missingDataNotes.push(
+      `${productA.name} does not specify serving weight in grams; per-100g baseline values cannot be derived without package net weight.`
+    );
+  }
+  if (!productB.nutritionFacts?.per100g && productB.nutritionFacts) {
+    missingDataNotes.push(
+      `${productB.name} does not specify serving weight in grams; per-100g baseline values cannot be derived without package net weight.`
+    );
+  }
 
   return {
     sharedIngredients,
